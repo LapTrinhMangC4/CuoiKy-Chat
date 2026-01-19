@@ -1,22 +1,24 @@
 import socket
+import threading
 
-HOST = '127.0.0.1'
-PORT = 1234
+clients = []
+
+def handle_client(client):
+    while True:
+        msg = client.recv(1024).decode()
+        if not msg:
+            break
+        print(msg)
+    clients.remove(client)
+    client.close()
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server.bind((HOST, PORT))
-server.listen(1)
+server.bind(('127.0.0.1', 1234))
+server.listen()
 
-print("Server đang chạy...")
-
-client, addr = server.accept()
-print("Client kết nối từ", addr)
+print("Server multi-client đang chạy...")
 
 while True:
-    msg = client.recv(1024).decode()
-    if not msg:
-        break
-    print("Client:", msg)
-
-client.close()
-server.close()
+    client, addr = server.accept()
+    clients.append(client)
+    threading.Thread(target=handle_client, args=(client,)).start()
