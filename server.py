@@ -22,3 +22,10 @@ while True:
     client, addr = server.accept()
     clients.append(client)
     threading.Thread(target=handle_client, args=(client,)).start()
+
+
+def broadcast(message, sender):
+    for c in clients:
+        if c != sender:
+            c.send(message.encode())
+broadcast(msg, client)
