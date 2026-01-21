@@ -2,9 +2,12 @@ import socket
 import threading
 from datetime import datetime
 import json
+import argparse
+import os
 
-HOST = '127.0.0.1'
-PORT = 1234
+# Default bind address for the server. Keep localhost; ngrok will forward to this.
+HOST = os.environ.get('CHAT_HOST', '127.0.0.1')
+PORT = int(os.environ.get('CHAT_PORT', 1234))
 
 clients = {}  # {socket: {'username': 'Alice', 'avatar': '😀'}}
 
@@ -124,16 +127,39 @@ def handle_client(client):
 
 def main():
     """Khởi động server"""
+    parser = argparse.ArgumentParser(description='Run chat server (optionally with ngrok)')
+    parser.add_argument('--host', default=HOST, help='Host to bind (default: %(default)s)')
+    parser.add_argument('--port', type=int, default=PORT, help='Port to bind (default: %(default)s)')
+    parser.add_argument('--ngrok', action='store_true', help='Start an ngrok TCP tunnel and print public address')
+    args = parser.parse_args()
+
+    bind_host = args.host
+    bind_port = args.port
+
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind((HOST, PORT))
+    server.bind((bind_host, bind_port))
     server.listen(5)
+
+    # Optionally start ngrok TCP tunnel and print public URL
+    if args.ngrok:
+        try:
+            from pyngrok import ngrok
+
+            # Start a TCP tunnel that forwards to bind_port
+            tunnel = ngrok.connect(bind_port, "tcp")
+            public_url = tunnel.public_url  # like tcp://0.tcp.ngrok.io:XXXXX
+            print("\n🔗 Ngrok tunnel started:", public_url)
+            print("Use the host and port from the tcp URL on remote clients (example: 0.tcp.ngrok.io:XXXXX)\n")
+        except Exception as e:
+            print(f"⚠️ Không thể khởi động ngrok: {e}")
+            print("Tiếp tục chạy server cục bộ...\n")
 
     print("=" * 60)
     print("🚀 SERVER CHAT VỚI AVATAR ĐANG CHẠY")
     print("=" * 60)
-    print(f"📍 Host: {HOST}")
-    print(f"🔌 Port: {PORT}")
+    print(f"📍 Host: {bind_host}")
+    print(f"🔌 Port: {bind_port}")
     print(f"⏰ Thời gian: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
     print("✨ Tính năng: Hỗ trợ avatar cho mỗi user")
