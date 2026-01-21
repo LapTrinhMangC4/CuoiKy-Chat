@@ -8,8 +8,11 @@ import os
 # Default bind address for the server. Keep localhost; ngrok will forward to this.
 HOST = os.environ.get('CHAT_HOST', '127.0.0.1')
 PORT = int(os.environ.get('CHAT_PORT', 1234))
+BUFFER_SIZE = 1024
+HISTORY_FILE = "chat_history.txt"
 
 clients = {}  # {socket: {'username': 'Alice', 'avatar': '😀'}}
+clients_lock = threading.Lock()
 
 def broadcast(message, sender=None):
     """Gửi tin nhắn đến tất cả clients"""
@@ -23,7 +26,7 @@ def broadcast(message, sender=None):
 def save_history(message):
     """Lưu lịch sử chat"""
     try:
-        with open("chat_history.txt", "a", encoding="utf-8") as f:
+        with open(HISTORY_FILE, "a", encoding="utf-8") as f:
             f.write(message + "\n")
     except:
         pass
