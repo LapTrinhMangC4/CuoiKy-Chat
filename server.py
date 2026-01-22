@@ -4,15 +4,14 @@ from datetime import datetime
 import json
 import argparse
 import os
+import subprocess
+import re
+import time
 
-# Default bind address for the server. Keep localhost; ngrok will forward to this.
 HOST = os.environ.get('CHAT_HOST', '127.0.0.1')
 PORT = int(os.environ.get('CHAT_PORT', 1234))
-BUFFER_SIZE = 1024
-HISTORY_FILE = "chat_history.txt"
 
 clients = {}  # {socket: {'username': 'Alice', 'avatar': '😀'}}
-clients_lock = threading.Lock()
 
 def broadcast(message, sender=None):
     """Gửi tin nhắn đến tất cả clients"""
@@ -26,7 +25,7 @@ def broadcast(message, sender=None):
 def save_history(message):
     """Lưu lịch sử chat"""
     try:
-        with open(HISTORY_FILE, "a", encoding="utf-8") as f:
+        with open("chat_history.txt", "a", encoding="utf-8") as f:
             f.write(message + "\n")
     except:
         pass
@@ -130,10 +129,10 @@ def handle_client(client):
 
 def main():
     """Khởi động server"""
-    parser = argparse.ArgumentParser(description='Run chat server (optionally with ngrok)')
+    parser = argparse.ArgumentParser(description='Run chat server (optionally with cloudflared)')
     parser.add_argument('--host', default=HOST, help='Host to bind (default: %(default)s)')
     parser.add_argument('--port', type=int, default=PORT, help='Port to bind (default: %(default)s)')
-    parser.add_argument('--ngrok', action='store_true', help='Start an ngrok TCP tunnel and print public address')
+    parser.add_argument('--cloudflared', action='store_true', help='Start a cloudflared TCP tunnel and print public address')
     args = parser.parse_args()
 
     bind_host = args.host
@@ -144,19 +143,42 @@ def main():
     server.bind((bind_host, bind_port))
     server.listen(5)
 
-    # Optionally start ngrok TCP tunnel and print public URL
-    if args.ngrok:
-        try:
-            from pyngrok import ngrok
+    
 
-            # Start a TCP tunnel that forwards to bind_port
-            tunnel = ngrok.connect(bind_port, "tcp")
-            public_url = tunnel.public_url  # like tcp://0.tcp.ngrok.io:XXXXX
-            print("\n🔗 Ngrok tunnel started:", public_url)
-            print("Use the host and port from the tcp URL on remote clients (example: 0.tcp.ngrok.io:XXXXX)\n")
+    # Optionally start cloudflared TCP tunnel and print public URL
+    cloudflared_proc = None
+    if args.cloudflared:
+        try:
+            cmd = ['cloudflared', 'tunnel', '--url', f'tcp://{bind_host}:{bind_port}']
+            cloudflared_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+            public_url = None
+            def _read_cf_output():
+                nonlocal public_url
+                for line in cloudflared_proc.stdout:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    print(line)
+                    # try to find a tcp://.... pattern in output
+                    m = re.search(r'(tcp://[^\s]+)', line)
+                    if m and not public_url:
+                        public_url = m.group(1)
+                        print("\n🔗 Cloudflared tunnel started:", public_url)
+
+            t_cf = threading.Thread(target=_read_cf_output, daemon=True)
+            t_cf.start()
+
+            # give cloudflared a moment to initialize
+            time.sleep(1)
+            
+
+        except FileNotFoundError:
+            print("⚠️ cloudflared not found. Please install cloudflared and ensure it's in PATH.")
+            cloudflared_proc = None
         except Exception as e:
-            print(f"⚠️ Không thể khởi động ngrok: {e}")
-            print("Tiếp tục chạy server cục bộ...\n")
+            print(f"⚠️ Không thể khởi động cloudflared: {e}")
+            cloudflared_proc = None
 
     print("=" * 60)
     print("🚀 SERVER CHAT VỚI AVATAR ĐANG CHẠY")
@@ -178,6 +200,12 @@ def main():
     except KeyboardInterrupt:
         print("\n\n🛑 Server đang tắt...")
         server.close()
+        # terminate cloudflared if we started it
+        try:
+            if cloudflared_proc:
+                cloudflared_proc.terminate()
+        except:
+            pass
 
 if __name__ == "__main__":
     main()
