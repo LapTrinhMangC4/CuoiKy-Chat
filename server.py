@@ -8,7 +8,7 @@ import subprocess
 import re
 import time
 
-HOST = os.environ.get('CHAT_HOST', '127.0.0.1')
+HOST = os.environ.get('CHAT_HOST', '0.0.0.0')
 PORT = int(os.environ.get('CHAT_PORT', 1234))
 
 clients = {}  # {socket: {'username': 'Alice', 'avatar': '😀'}}
@@ -149,7 +149,12 @@ def main():
     cloudflared_proc = None
     if args.cloudflared:
         try:
-            cmd = ['cloudflared', 'tunnel', '--url', f'tcp://{bind_host}:{bind_port}']
+            # If the server binds to 0.0.0.0, point cloudflared to localhost (127.0.0.1)
+            tunnel_target = bind_host
+            if bind_host in ('0.0.0.0', '::'):
+                tunnel_target = '127.0.0.1'
+
+            cmd = ['cloudflared', 'tunnel', '--url', f'tcp://{tunnel_target}:{bind_port}']
             cloudflared_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
             public_url = None
