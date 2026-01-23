@@ -1,21 +1,18 @@
-import socket
+import websocket
 import threading
 import tkinter as tk
 from tkinter import scrolledtext, messagebox
 import json
 from datetime import datetime
 
-HOST = '127.0.0.1'
-PORT = 1234
+WS_URL = "wss://born-prepared-sussex-labour.trycloudflare.com"
+
 
 class ChatClient:
     def __init__(self):
-        self.client = None
+        self.ws = None
         self.username = ""
         self.avatar = "👤"
-        self.running = True
-        
-        # Thư viện icon đầy đủ
         self.icon_library = {
             '😊 Biểu cảm': [
                 '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂',
@@ -90,27 +87,21 @@ class ChatClient:
                 '🎥', '📞', '☎️', '📟', '📠', '📺', '📻', '🎙️'
             ]
         }
-        
-        # Avatar selection cho login
+
         self.avatar_options = ['👤', '😀', '😎', '🤓', '🥳', '🤩', '😇', '🤠', 
                                '👨', '👩', '👦', '👧', '🧑', '👶', '🐶', '🐱',
                                '🦊', '🐼', '🐨', '🦁', '🐯', '🐸', '🐵', '🦄']
-        
-        # Tạo cửa sổ chính
+
         self.window = tk.Tk()
         self.window.title("💬 Chat Application")
         self.window.geometry("950x800")
         self.window.configure(bg='#F0F4F8')
-        
-        try:
-            self.window.iconbitmap('chat_icon.ico')
-        except:
-            pass
-        
+
         self.setup_login_screen()
-        
+        self.window.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    # ================= LOGIN =================
     def setup_login_screen(self):
-        """Màn hình đăng nhập đơn giản"""
         self.login_frame = tk.Frame(self.window, bg='#F0F4F8')
         self.login_frame.pack(expand=True, fill='both')
         
@@ -153,6 +144,8 @@ class ChatClient:
         self.join_btn.bind('<Enter>', lambda e: self.join_btn.config(bg='#2563EB'))
         self.join_btn.bind('<Leave>', lambda e: self.join_btn.config(bg='#3B82F6'))
         
+
+    # ================= CHAT UI =================
     def setup_chat_screen(self):
         """Màn hình chat"""
         self.login_frame.destroy()
@@ -303,122 +296,118 @@ class ChatClient:
         self.msg_entry.insert(current_pos, icon)
         self.msg_entry.focus()
         
+    # ================= WEBSOCKET =================
     def join_chat(self):
-        """Kết nối đến server"""
-        username = self.username_entry.get().strip()
-        
-        if not username:
-            messagebox.showwarning("⚠️ Lỗi", "Vui lòng nhập tên!")
+        name = self.username_entry.get().strip()
+        if not name:
+            messagebox.showwarning("Lỗi", "Vui lòng nhập tên")
             return
-        
-        if len(username) > 20:
-            messagebox.showwarning("⚠️ Lỗi", "Tên không được quá 20 ký tự!")
-            return
-        
-        self.username = username
-        
+
+        self.username = name
+
+        self.ws = websocket.WebSocketApp(
+            WS_URL,
+            on_open=self.on_open,
+            on_message=self.on_message,
+            on_close=self.on_ws_close
+        )
+
+        threading.Thread(
+            target=self.ws.run_forever,
+            daemon=True
+        ).start()
+
+        self.setup_chat_screen()
+
+    def on_open(self, ws):
+        ws.send(json.dumps({
+            "type": "join",
+            "username": self.username,
+            "avatar": self.avatar
+        }))
+
+    def on_message(self, ws, message):
         try:
-            self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.client.connect((HOST, PORT))
-            
-            # Gửi username và avatar dưới dạng JSON
-            user_data = json.dumps({
-                'username': self.username,
-                'avatar': self.avatar
-            })
-            self.client.send(user_data.encode('utf-8'))
-            
-            self.setup_chat_screen()
-            
-            receive_thread = threading.Thread(target=self.receive_messages)
-            receive_thread.daemon = True
-            receive_thread.start()
-            
-        except ConnectionRefusedError:
-            messagebox.showerror("❌ Lỗi kết nối", f"Không thể kết nối đến server!\n\nHãy đảm bảo server đang chạy trên {HOST}:{PORT}")
-        except Exception as e:
-            messagebox.showerror("❌ Lỗi", f"Đã xảy ra lỗi:\n{str(e)}")
-    
-    def receive_messages(self):
-        """Nhận tin nhắn"""
-        while self.running:
-            try:
-                message = self.client.recv(1024).decode('utf-8')
-                if message:
-                    data = json.loads(message)
-                    self.display_message(data)
-                else:
-                    break
-            except Exception as e:
-                if self.running:
-                    print(f"Lỗi: {e}")
-                break
-    
-    def display_message(self, data):
-        """Hiển thị tin nhắn"""
-        self.text_area.config(state='normal')
-        
+            data = json.loads(message)
+        except:
+            return
+
+        self.window.after(0, self.handle_message, data)
+
         if data['type'] == 'system':
-            self.text_area.insert(tk.END, '\n')
-            self.text_area.insert(tk.END, '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n', 'system')
-            self.text_area.insert(tk.END, f"✨ {data['message']} ✨\n", 'system')
-            self.text_area.insert(tk.END, '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n', 'system')
-            
+            self.text_area.insert(
+                tk.END,
+                f"\n⚠ {data['message']}\n"
+            )
+
         elif data['type'] == 'message':
-            is_self = data['username'] == self.username
-            avatar = data.get('avatar', '👤')
-            
-            self.text_area.insert(tk.END, '\n')
-            self.text_area.insert(tk.END, f"🕐 {data['time']}  ", 'time')
-            
-            self.text_area.insert(tk.END, f"{avatar} ", 'avatar')
-            
-            if is_self:
-                self.text_area.insert(tk.END, f"{data['username']}\n", 'username_self')
-            else:
-                self.text_area.insert(tk.END, f"{data['username']}\n", 'username')
-            
-            self.text_area.insert(tk.END, f"   {data['message']}\n", 'message')
-            
-        elif data['type'] == 'user_list':
-            user_count = len(data['users'])
-            self.online_label.config(text=f"🟢 {user_count} người online")
-        
+            self.text_area.insert(
+                tk.END,
+                f"[{data['time']}] {data['avatar']} {data['username']}: {data['message']}\n"
+            )
+
         self.text_area.config(state='disabled')
         self.text_area.see(tk.END)
-    
+
+    def handle_message(self, data):
+        self.text_area.config(state='normal')
+
+        if data['type'] == 'system':
+            self.text_area.insert(
+                tk.END,
+                f"\n⚠ {data['message']}\n",
+                'system'
+            )
+        elif data['type'] == 'message':
+            self.text_area.insert(
+                tk.END,
+                f"[{data['time']}] ",
+                'time'
+            )
+            self.text_area.insert(
+                tk.END,
+                f"{data['avatar']} {data['username']}: ",
+                'username'
+            )
+            self.text_area.insert(
+                tk.END,
+                f"{data['message']}\n",
+                'message'
+            )
+
+        elif data['type'] == 'user_list':
+            count = data.get('count', 1)
+            self.online_label.config(
+                text=f"🟢 {count} người online"
+            )
+        self.text_area.config(state='disabled')
+        self.text_area.see(tk.END)
+
     def send_message(self):
-        """Gửi tin nhắn"""
-        message = self.msg_entry.get().strip()
-        
-        if message:
-            try:
-                msg_data = json.dumps({'type': 'message', 'message': message})
-                self.client.send(msg_data.encode('utf-8'))
-                self.msg_entry.delete(0, tk.END)
-            except Exception as e:
-                messagebox.showerror("❌ Lỗi", f"Không thể gửi tin nhắn!\n{str(e)}")
-    
-    def on_closing(self):
-        """Xử lý đóng cửa sổ"""
-        if messagebox.askokcancel("Thoát", "Bạn có chắc muốn thoát?"):
-            self.running = False
-            if self.client:
-                try:
-                    self.client.close()
-                except:
-                    pass
-            self.window.destroy()
-    
-    def run(self):
-        """Chạy ứng dụng"""
-        self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
+        msg = self.msg_entry.get().strip()
+        if not msg:
+            return
+
+        self.ws.send(json.dumps({
+            "type": "message",
+            "message": msg
+        }))
+        self.msg_entry.delete(0, tk.END)
+
+    def on_ws_close(self, ws, *args):
+        messagebox.showinfo("Mất kết nối", "Server đã đóng")
+
+    def on_close(self):
         try:
-            self.window.mainloop()
-        except KeyboardInterrupt:
-            print("\nĐã dừng ứng dụng bằng Ctrl+C")
-            self.on_closing()
+            if self.ws:
+                self.ws.close()
+        except:
+            pass
+        self.window.destroy()
+
+    def run(self):
+        self.window.mainloop()
+
 
 if __name__ == "__main__":
-    app = ChatClient()
-    app.run()
+    ChatClient().run()
