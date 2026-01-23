@@ -1,176 +1,424 @@
-"""
-CHAT CLIENT - Lập trình Mạng
-Sử dụng: Socket TCP + Threading để nhận tin nhắn
-Kết nối đến server để chat
-"""
-
 import socket
 import threading
-import sys
+import tkinter as tk
+from tkinter import scrolledtext, messagebox
+import json
+from datetime import datetime
 
-# Cấu hình kết nối
-HOST = '127.0.0.1'  # Server address
-PORT = 5555         # Server port
+HOST = '127.0.0.1'
+PORT = 1234
 
-# Biến toàn cục
-running = True
-username = ""
-
-def receive_messages(client_socket):
-    """
-    Thread nhận tin nhắn từ server
-    
-    Args:
-        client_socket: Socket kết nối đến server
-    """
-    global running
-    
-    while running:
+class ChatClient:
+    def __init__(self):
+        self.client = None
+        self.username = ""
+        self.avatar = "👤"
+        self.running = True
+        
+        # Thư viện icon đầy đủ
+        self.icon_library = {
+            '😊 Biểu cảm': [
+                '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂',
+                '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩',
+                '😘', '😗', '😚', '😙', '😋', '😛', '😜', '🤪',
+                '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨',
+                '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥',
+                '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕'
+            ],
+            '❤️ Cảm xúc': [
+                '😢', '😭', '😤', '😠', '😡', '🤬', '😱', '😨',
+                '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥',
+                '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺',
+                '👻', '👽', '👾', '🤖', '😺', '😸', '😹', '😻',
+                '😼', '😽', '🙀', '😿', '😾', '❤️', '🧡', '💛',
+                '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️'
+            ],
+            '👋 Cử chỉ': [
+                '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤏', '✌️',
+                '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕',
+                '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜',
+                '👏', '🙌', '👐', '🤲', '🤝', '🙏', '✍️', '💅',
+                '🤳', '💪', '🦾', '🦿', '🦵', '🦶', '👂', '🦻',
+                '👃', '🧠', '🦷', '🦴', '👀', '👁️', '👅', '👄'
+            ],
+            '🐶 Động vật': [
+                '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼',
+                '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🙈',
+                '🙉', '🙊', '🐔', '🐧', '🐦', '🐤', '🐣', '🐥',
+                '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄',
+                '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🦟', '🦗',
+                '🕷️', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙'
+            ],
+            '🍕 Đồ ăn': [
+                '🍏', '🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇',
+                '🍓', '🍈', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝',
+                '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶️', '🌽',
+                '🥕', '🧄', '🧅', '🥔', '🍠', '🥐', '🥯', '🍞',
+                '🥖', '🥨', '🧀', '🥚', '🍳', '🧈', '🥞', '🧇',
+                '🥓', '🥩', '🍗', '🍖', '🦴', '🌭', '🍔', '🍟'
+            ],
+            '⚽ Thể thao': [
+                '⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉',
+                '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍',
+                '🏏', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿', '🥊',
+                '🥋', '🎽', '🛹', '🛼', '🛷', '⛸️', '🥌', '🎿',
+                '⛷️', '🏂', '🪂', '🏋️', '🤼', '🤸', '🤺', '⛹️',
+                '🤾', '🏌️', '🏇', '🧘', '🏊', '🤽', '🚣', '🧗'
+            ],
+            '🚗 Phương tiện': [
+                '🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑',
+                '🚒', '🚐', '🚚', '🚛', '🚜', '🦯', '🦽', '🦼',
+                '🛴', '🚲', '🛵', '🏍️', '🛺', '🚨', '🚔', '🚍',
+                '🚘', '🚖', '🚡', '🚠', '🚟', '🚃', '🚋', '🚞',
+                '🚝', '🚄', '🚅', '🚈', '🚂', '🚆', '🚇', '🚊',
+                '🚉', '✈️', '🛫', '🛬', '🛩️', '💺', '🚁', '🛰️'
+            ],
+            '⭐ Biểu tượng': [
+                '⭐', '🌟', '✨', '💫', '🔥', '💥', '💢', '💨',
+                '💦', '💧', '💤', '💨', '🌈', '☀️', '⛅', '☁️',
+                '🌤️', '⛈️', '🌩️', '⚡', '❄️', '☃️', '⛄', '☄️',
+                '💎', '💍', '👑', '🎯', '🎮', '🎲', '🎰', '🎳',
+                '🎨', '🎭', '🎪', '🎬', '🎤', '🎧', '🎼', '🎹',
+                '🥁', '🎷', '🎺', '🎸', '🪕', '🎻', '🎲', '♟️'
+            ],
+            '🏠 Vật dụng': [
+                '🏠', '🏡', '🏢', '🏣', '🏤', '🏥', '🏦', '🏨',
+                '🏩', '🏪', '🏫', '🏬', '🏭', '🏯', '🏰', '💒',
+                '🗼', '🗽', '⛪', '🕌', '🛕', '🕍', '⛩️', '🕋',
+                '📱', '💻', '⌨️', '🖥️', '🖨️', '🖱️', '🖲️', '🕹️',
+                '💽', '💾', '💿', '📀', '📼', '📷', '📸', '📹',
+                '🎥', '📞', '☎️', '📟', '📠', '📺', '📻', '🎙️'
+            ]
+        }
+        
+        # Avatar selection cho login
+        self.avatar_options = ['👤', '😀', '😎', '🤓', '🥳', '🤩', '😇', '🤠', 
+                               '👨', '👩', '👦', '👧', '🧑', '👶', '🐶', '🐱',
+                               '🦊', '🐼', '🐨', '🦁', '🐯', '🐸', '🐵', '🦄']
+        
+        # Tạo cửa sổ chính
+        self.window = tk.Tk()
+        self.window.title("💬 Chat Application")
+        self.window.geometry("950x800")
+        self.window.configure(bg='#F0F4F8')
+        
         try:
-            # Nhận tin nhắn từ server
-            message = client_socket.recv(1024).decode('utf-8')
-            
-            if not message:
-                print("\n[ERROR] Mất kết nối với server")
-                running = False
-                break
-            
-            # Xử lý yêu cầu username từ server
-            if message == "USERNAME":
-                continue
-            
-            # Hiển thị tin nhắn
-            print(f"\r{message}")
-            print(f"[{username}] ", end='', flush=True)
-            
-        except Exception as e:
-            if running:  # Chỉ hiển thị lỗi nếu vẫn đang chạy
-                print(f"\n[ERROR] Lỗi nhận tin nhắn: {e}")
-            running = False
-            break
-
-def send_messages(client_socket):
-    """
-    Thread gửi tin nhắn đến server
-    
-    Args:
-        client_socket: Socket kết nối đến server
-    """
-    global running
-    
-    while running:
-        try:
-            # Hiển thị prompt
-            message = input(f"[{username}] ")
-            
-            if not running:
-                break
-            
-            if message.strip():
-                # Gửi tin nhắn đến server
-                client_socket.send(message.encode('utf-8'))
-                
-                # Xử lý lệnh quit
-                if message.strip().lower() == '/quit':
-                    print("\n[INFO] Đang ngắt kết nối...")
-                    running = False
-                    break
-        
-        except EOFError:
-            # Xử lý Ctrl+D
-            running = False
-            break
-        except KeyboardInterrupt:
-            # Xử lý Ctrl+C
-            running = False
-            break
-        except Exception as e:
-            if running:
-                print(f"\n[ERROR] Lỗi gửi tin nhắn: {e}")
-            running = False
-            break
-
-def connect_to_server():
-    """
-    Kết nối đến chat server
-    """
-    global username, running
-    
-    # Bước 1: Tạo socket TCP
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    
-    try:
-        print(f"\n[CONNECTING] Đang kết nối đến {HOST}:{PORT}...")
-        
-        # Bước 2: Kết nối đến server
-        client_socket.connect((HOST, PORT))
-        print(f"[CONNECTED] Đã kết nối thành công!\n")
-        
-        # Bước 3: Chờ yêu cầu username từ server
-        request = client_socket.recv(1024).decode('utf-8')
-        
-        if request == "USERNAME":
-            # Nhập username
-            while True:
-                username = input("Nhập tên của bạn: ").strip()
-                if username:
-                    break
-                print("[ERROR] Tên không được để trống!")
-            
-            # Gửi username đến server
-            client_socket.send(username.encode('utf-8'))
-        
-        # Bước 4: Nhận thông báo chào mừng
-        welcome = client_socket.recv(1024).decode('utf-8')
-        print(welcome)
-        
-        # Hiển thị hướng dẫn
-        print("""
-╔══════════════════════════════════════════════════════════╗
-║                    HƯỚNG DẪN SỬ DỤNG                    ║
-╠══════════════════════════════════════════════════════════╣
-║  /users  - Xem danh sách người dùng online              ║
-║  /help   - Xem hướng dẫn                                ║
-║  /quit   - Thoát khỏi chat                              ║
-╚══════════════════════════════════════════════════════════╝
-        """)
-        
-        # Bước 5: Tạo thread nhận tin nhắn
-        receive_thread = threading.Thread(
-            target=receive_messages,
-            args=(client_socket,),
-            daemon=True
-        )
-        receive_thread.start()
-        
-        # Bước 6: Thread chính xử lý gửi tin nhắn
-        send_messages(client_socket)
-        
-    except ConnectionRefusedError:
-        print(f"[ERROR] Không thể kết nối đến server {HOST}:{PORT}")
-        print("[INFO] Hãy chắc chắn server đang chạy!")
-    except Exception as e:
-        print(f"[ERROR] Lỗi: {e}")
-    finally:
-        running = False
-        print("\n[DISCONNECTED] Đã ngắt kết nối")
-        try:
-            client_socket.close()
+            self.window.iconbitmap('chat_icon.ico')
         except:
             pass
+        
+        self.setup_login_screen()
+        
+    def setup_login_screen(self):
+        """Màn hình đăng nhập đơn giản"""
+        self.login_frame = tk.Frame(self.window, bg='#F0F4F8')
+        self.login_frame.pack(expand=True, fill='both')
+        
+        container = tk.Frame(self.login_frame, bg='white', bd=0, relief='flat')
+        container.place(relx=0.5, rely=0.5, anchor='center', width=450, height=400)
+        
+        shadow_frame = tk.Frame(self.login_frame, bg='#E0E7EF', bd=0)
+        shadow_frame.place(relx=0.5, rely=0.5, anchor='center', width=454, height=404)
+        container.lift()
+        
+        # Logo
+        logo_label = tk.Label(container, text="💬", font=('Arial', 80), bg='white', fg='#3B82F6')
+        logo_label.pack(pady=(50, 10))
+        
+        # Title
+        title = tk.Label(container, text="CHAT APPLICATION", font=('Arial', 26, 'bold'), bg='white', fg='#1E293B')
+        title.pack(pady=(0, 5))
+        
+        subtitle = tk.Label(container, text="Kết nối và trò chuyện", font=('Arial', 12), bg='white', fg='#64748B')
+        subtitle.pack(pady=(0, 30))
+        
+        # Username input
+        input_frame = tk.Frame(container, bg='white')
+        input_frame.pack(pady=10, padx=50, fill='x')
+        
+        tk.Label(input_frame, text="👤 Tên của bạn", font=('Arial', 13, 'bold'), bg='white', fg='#1E293B', anchor='w').pack(fill='x', pady=(0, 8))
+        
+        entry_container = tk.Frame(input_frame, bg='#E0E7EF', bd=2)
+        entry_container.pack(fill='x')
+        
+        self.username_entry = tk.Entry(entry_container, font=('Arial', 15), bg='white', fg='#1E293B', insertbackground='#3B82F6', relief='flat', bd=0)
+        self.username_entry.pack(ipady=12, ipadx=10, fill='x')
+        self.username_entry.bind('<Return>', lambda e: self.join_chat())
+        self.username_entry.focus()
+        
+        # Join button
+        self.join_btn = tk.Button(input_frame, text="🚀 Tham gia Chat", font=('Arial', 14, 'bold'), bg='#3B82F6', fg='white', activebackground='#2563EB', activeforeground='white', relief='flat', bd=0, cursor='hand2', command=self.join_chat)
+        self.join_btn.pack(fill='x', ipady=14, pady=(20, 0))
+        
+        self.join_btn.bind('<Enter>', lambda e: self.join_btn.config(bg='#2563EB'))
+        self.join_btn.bind('<Leave>', lambda e: self.join_btn.config(bg='#3B82F6'))
+        
+    def setup_chat_screen(self):
+        """Màn hình chat"""
+        self.login_frame.destroy()
+        
+        main_container = tk.Frame(self.window, bg='#F0F4F8')
+        main_container.pack(expand=True, fill='both')
+        
+        # ===== HEADER =====
+        header = tk.Frame(main_container, bg='#3B82F6', height=70)
+        header.pack(fill='x', side='top')
+        header.pack_propagate(False)
+        
+        left_header = tk.Frame(header, bg='#3B82F6')
+        left_header.pack(side='left', padx=25, pady=15)
+        
+        title_label = tk.Label(left_header, text="💬 Chat Room", font=('Arial', 20, 'bold'), bg='#3B82F6', fg='white')
+        title_label.pack()
+        
+        right_header = tk.Frame(header, bg='#3B82F6')
+        right_header.pack(side='right', padx=25, pady=15)
+        
+        online_container = tk.Frame(right_header, bg='white', bd=0)
+        online_container.pack(side='left', padx=(0, 15))
+        
+        self.online_label = tk.Label(online_container, text="🟢 1 người online", font=('Arial', 11, 'bold'), bg='white', fg='#10B981', padx=12, pady=4)
+        self.online_label.pack()
+        
+        self.user_label = tk.Label(right_header, text=f"👤 {self.username}", font=('Arial', 12), bg='#3B82F6', fg='white')
+        self.user_label.pack()
+        
+        # ===== MAIN CONTENT =====
+        content_frame = tk.Frame(main_container, bg='#F0F4F8')
+        content_frame.pack(expand=True, fill='both', padx=15, pady=15)
+        
+        # Chat messages container
+        chat_container = tk.Frame(content_frame, bg='#E0E7EF', bd=2)
+        chat_container.pack(expand=True, fill='both', pady=(0, 10))
+        
+        self.text_area = scrolledtext.ScrolledText(chat_container, wrap=tk.WORD, font=('Arial', 12), bg='white', fg='#1E293B', insertbackground='#3B82F6', relief='flat', bd=0, state='disabled', padx=15, pady=15)
+        self.text_area.pack(expand=True, fill='both')
+        
+        # Tags cho styling
+        self.text_area.tag_config('system', foreground='#8B5CF6', font=('Arial', 11, 'italic'), justify='center')
+        self.text_area.tag_config('username', foreground='#3B82F6', font=('Arial', 12, 'bold'))
+        self.text_area.tag_config('username_self', foreground='#10B981', font=('Arial', 12, 'bold'))
+        self.text_area.tag_config('message', foreground='#1E293B', font=('Arial', 12))
+        self.text_area.tag_config('time', foreground='#94A3B8', font=('Arial', 10))
+        self.text_area.tag_config('avatar', font=('Arial', 14))
+        
+        # ===== INPUT AREA =====
+        input_container = tk.Frame(content_frame, bg='white', bd=2, relief='flat')
+        input_container.pack(fill='x')
+        
+        input_inner = tk.Frame(input_container, bg='white')
+        input_inner.pack(fill='x', padx=10, pady=10)
+        
+        # Icon library button
+        icon_btn = tk.Button(input_inner, text="📚", font=('Arial', 18), bg='#8B5CF6', fg='white', activebackground='#7C3AED', activeforeground='white', relief='flat', bd=0, cursor='hand2', command=self.open_icon_library, width=3)
+        icon_btn.pack(side='left', padx=(0, 5))
+        icon_btn.bind('<Enter>', lambda e: icon_btn.config(bg='#7C3AED'))
+        icon_btn.bind('<Leave>', lambda e: icon_btn.config(bg='#8B5CF6'))
+        
+        # Message input
+        entry_frame = tk.Frame(input_inner, bg='#E0E7EF', bd=2)
+        entry_frame.pack(side='left', expand=True, fill='x', padx=(0, 10))
+        
+        self.msg_entry = tk.Entry(entry_frame, font=('Arial', 13), bg='white', fg='#1E293B', insertbackground='#3B82F6', relief='flat', bd=0)
+        self.msg_entry.pack(fill='x', ipady=12, ipadx=10)
+        self.msg_entry.bind('<Return>', lambda e: self.send_message())
+        self.msg_entry.focus()
+        
+        # Send button
+        self.send_btn = tk.Button(input_inner, text="📤 Gửi", font=('Arial', 13, 'bold'), bg='#10B981', fg='white', activebackground='#059669', activeforeground='white', relief='flat', bd=0, cursor='hand2', command=self.send_message, padx=30, pady=12)
+        self.send_btn.pack(side='right')
+        
+        self.send_btn.bind('<Enter>', lambda e: self.send_btn.config(bg='#059669'))
+        self.send_btn.bind('<Leave>', lambda e: self.send_btn.config(bg='#10B981'))
+        
+    def open_icon_library(self):
+        """Mở thư viện icon"""
+        library_window = tk.Toplevel(self.window)
+        library_window.title("📚 Thư Viện Icon")
+        library_window.geometry("750x650")
+        library_window.configure(bg='white')
+        library_window.transient(self.window)
+        library_window.grab_set()
+        
+        # Title
+        title = tk.Label(library_window, text="📚 Chọn Icon Để Chèn Vào Tin Nhắn", font=('Arial', 18, 'bold'), bg='white', fg='#1E293B')
+        title.pack(pady=15)
+        
+        # Close button
+        close_btn = tk.Button(library_window, text="✖ Đóng", font=('Arial', 11, 'bold'), bg='#EF4444', fg='white', activebackground='#DC2626', relief='flat', bd=0, cursor='hand2', command=library_window.destroy)
+        close_btn.pack(pady=(0, 10))
+        close_btn.bind('<Enter>', lambda e: close_btn.config(bg='#DC2626'))
+        close_btn.bind('<Leave>', lambda e: close_btn.config(bg='#EF4444'))
+        
+        # Content area với scroll
+        canvas = tk.Canvas(library_window, bg='white', highlightthickness=0)
+        scrollbar = tk.Scrollbar(library_window, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg='white')
+        
+        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Hiển thị icons theo category
+        for category, icons in self.icon_library.items():
+            # Category header
+            cat_label = tk.Label(scrollable_frame, text=category, font=('Arial', 14, 'bold'), bg='white', fg='#1E293B', anchor='w')
+            cat_label.pack(fill='x', padx=20, pady=(15, 10))
+            
+            # Icons grid
+            icon_frame = tk.Frame(scrollable_frame, bg='white')
+            icon_frame.pack(fill='x', padx=20, pady=(0, 10))
+            
+            row = 0
+            col = 0
+            max_cols = 14
+            
+            for icon in icons:
+                btn = tk.Button(icon_frame, text=icon, font=('Arial', 20), bg='#F0F4F8', fg='#1E293B', relief='flat', bd=0, cursor='hand2', width=2, height=1, command=lambda i=icon, w=library_window: [self.insert_icon(i), w.destroy()])
+                btn.grid(row=row, column=col, padx=3, pady=3)
+                
+                btn.bind('<Enter>', lambda e, b=btn: b.config(bg='#E0E7EF'))
+                btn.bind('<Leave>', lambda e, b=btn: b.config(bg='#F0F4F8'))
+                
+                col += 1
+                if col >= max_cols:
+                    col = 0
+                    row += 1
+            
+            # Separator
+            sep = tk.Frame(scrollable_frame, bg='#E0E7EF', height=1)
+            sep.pack(fill='x', padx=20, pady=5)
+        
+        canvas.pack(side="left", fill="both", expand=True, padx=10, pady=(0, 10))
+        scrollbar.pack(side="right", fill="y", pady=(0, 10))
+        
+        # Mouse wheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+    def insert_icon(self, icon):
+        """Chèn icon vào ô nhập tin nhắn"""
+        current_pos = self.msg_entry.index(tk.INSERT)
+        self.msg_entry.insert(current_pos, icon)
+        self.msg_entry.focus()
+        
+    def join_chat(self):
+        """Kết nối đến server"""
+        username = self.username_entry.get().strip()
+        
+        if not username:
+            messagebox.showwarning("⚠️ Lỗi", "Vui lòng nhập tên!")
+            return
+        
+        if len(username) > 20:
+            messagebox.showwarning("⚠️ Lỗi", "Tên không được quá 20 ký tự!")
+            return
+        
+        self.username = username
+        
+        try:
+            self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.client.connect((HOST, PORT))
+            
+            # Gửi username và avatar dưới dạng JSON
+            user_data = json.dumps({
+                'username': self.username,
+                'avatar': self.avatar
+            })
+            self.client.send(user_data.encode('utf-8'))
+            
+            self.setup_chat_screen()
+            
+            receive_thread = threading.Thread(target=self.receive_messages)
+            receive_thread.daemon = True
+            receive_thread.start()
+            
+        except ConnectionRefusedError:
+            messagebox.showerror("❌ Lỗi kết nối", f"Không thể kết nối đến server!\n\nHãy đảm bảo server đang chạy trên {HOST}:{PORT}")
+        except Exception as e:
+            messagebox.showerror("❌ Lỗi", f"Đã xảy ra lỗi:\n{str(e)}")
+    
+    def receive_messages(self):
+        """Nhận tin nhắn"""
+        while self.running:
+            try:
+                message = self.client.recv(1024).decode('utf-8')
+                if message:
+                    data = json.loads(message)
+                    self.display_message(data)
+                else:
+                    break
+            except Exception as e:
+                if self.running:
+                    print(f"Lỗi: {e}")
+                break
+    
+    def display_message(self, data):
+        """Hiển thị tin nhắn"""
+        self.text_area.config(state='normal')
+        
+        if data['type'] == 'system':
+            self.text_area.insert(tk.END, '\n')
+            self.text_area.insert(tk.END, '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n', 'system')
+            self.text_area.insert(tk.END, f"✨ {data['message']} ✨\n", 'system')
+            self.text_area.insert(tk.END, '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n', 'system')
+            
+        elif data['type'] == 'message':
+            is_self = data['username'] == self.username
+            avatar = data.get('avatar', '👤')
+            
+            self.text_area.insert(tk.END, '\n')
+            self.text_area.insert(tk.END, f"🕐 {data['time']}  ", 'time')
+            
+            self.text_area.insert(tk.END, f"{avatar} ", 'avatar')
+            
+            if is_self:
+                self.text_area.insert(tk.END, f"{data['username']}\n", 'username_self')
+            else:
+                self.text_area.insert(tk.END, f"{data['username']}\n", 'username')
+            
+            self.text_area.insert(tk.END, f"   {data['message']}\n", 'message')
+            
+        elif data['type'] == 'user_list':
+            user_count = len(data['users'])
+            self.online_label.config(text=f"🟢 {user_count} người online")
+        
+        self.text_area.config(state='disabled')
+        self.text_area.see(tk.END)
+    
+    def send_message(self):
+        """Gửi tin nhắn"""
+        message = self.msg_entry.get().strip()
+        
+        if message:
+            try:
+                msg_data = json.dumps({'type': 'message', 'message': message})
+                self.client.send(msg_data.encode('utf-8'))
+                self.msg_entry.delete(0, tk.END)
+            except Exception as e:
+                messagebox.showerror("❌ Lỗi", f"Không thể gửi tin nhắn!\n{str(e)}")
+    
+    def on_closing(self):
+        """Xử lý đóng cửa sổ"""
+        if messagebox.askokcancel("Thoát", "Bạn có chắc muốn thoát?"):
+            self.running = False
+            if self.client:
+                try:
+                    self.client.close()
+                except:
+                    pass
+            self.window.destroy()
+    
+    def run(self):
+        """Chạy ứng dụng"""
+        self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
+        try:
+            self.window.mainloop()
+        except KeyboardInterrupt:
+            print("\nĐã dừng ứng dụng bằng Ctrl+C")
+            self.on_closing()
 
 if __name__ == "__main__":
-    print("""
-╔══════════════════════════════════════════════════════════╗
-║                                                          ║
-║           CHAT CLIENT - LẬP TRÌNH MẠNG                  ║
-║           Socket TCP + Threading                         ║
-║                                                          ║
-╚══════════════════════════════════════════════════════════╝
-    """)
-    
-    try:
-        connect_to_server()
-    except KeyboardInterrupt:
-        print("\n[EXIT] Tạm biệt!")
-        sys.exit(0)
+    app = ChatClient()
+    app.run()
