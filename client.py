@@ -413,11 +413,7 @@ class ChatClient:
     def run(self):
         """Chạy ứng dụng"""
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
-        try:
-            self.window.mainloop()
-        except KeyboardInterrupt:
-            print("\nĐã dừng ứng dụng bằng Ctrl+C")
-            self.on_closing()
+        self.window.mainloop()
 
 if __name__ == "__main__":
     app = ChatClient()
